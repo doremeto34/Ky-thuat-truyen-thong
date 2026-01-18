@@ -1,11 +1,4 @@
-function [F_comm, F_sensing, feasible, SSNR_opt] = opt_jsc_GWO_variants(H_comm, sigmasq_comm, gamma, sensing_beamsteering, sensing_streams, sigmasq_sens, P_all, F_init, algo_type)
-    % algo_type: 
-    % 1:standard GWO 
-    % 2:warm-start GWO 
-    % 3:exponential GWO 
-    % 4:weighted GWO
-
-    %% parameters
+function [F_comm, F_sensing, feasible, SSNR_opt] = opt_jsc_GWO_variants(H_comm, sigmasq_comm, gamma, sensing_beamsteering, sensing_streams, sigmasq_sens, P_all, F_init, variant_name)
     SearchAgents_no = 30; 
     Max_iter = 50;       
     
@@ -15,9 +8,7 @@ function [F_comm, F_sensing, feasible, SSNR_opt] = opt_jsc_GWO_variants(H_comm, 
     
     Positions = rand(SearchAgents_no, dim) * 2 - 1; 
     
-    %% initiation
-    
-    if (algo_type >= 2) && ~isempty(F_init)
+    if (strcmp(variant_name, 'HGWO') || strcmp(variant_name, 'IGWO') || strcmp(variant_name, 'WGWO')) && ~isempty(F_init)
         wolf_init_vector = encode_wolf(F_init, U, M, N, sensing_streams);
         Positions(1, :) = wolf_init_vector;
         for k = 2:5
@@ -29,33 +20,29 @@ function [F_comm, F_sensing, feasible, SSNR_opt] = opt_jsc_GWO_variants(H_comm, 
     Beta_pos = zeros(1, dim);  Beta_score = -inf;
     Delta_pos = zeros(1, dim); Delta_score = -inf;
     
-    %% main loop
     for l = 1:Max_iter
-        
-        % EGWO
-        if algo_type == 3
+        if strcmp(variant_name, 'IGWO')
             a = 2 * (1 - (l / Max_iter)^2); 
-        else           
-            a = 2 - l * ((2) / Max_iter); 
+        else
+            a = 2 - l * (2 / Max_iter); 
         end
-        % -----------------------------------------------
         
         for i = 1:SearchAgents_no
             Positions(i, :) = max(min(Positions(i, :), 10), -10);
             
-            % cal fitness
             fitness = calculate_fitness(Positions(i, :), H_comm, sigmasq_comm, gamma, sensing_beamsteering, sigmasq_sens, P_all, U, M, N, sensing_streams);
             
             if fitness > Alpha_score
                 Alpha_score = fitness; Alpha_pos = Positions(i, :);
-            elseif fitness > Beta_score
+            end
+            if fitness > Beta_score && fitness < Alpha_score
                 Beta_score = fitness; Beta_pos = Positions(i, :);
-            elseif fitness > Delta_score
+            end
+            if fitness > Delta_score && fitness < Beta_score
                 Delta_score = fitness; Delta_pos = Positions(i, :);
             end
         end
         
-        % update pos
         for i = 1:SearchAgents_no
             for j = 1:dim
                 r1 = rand(); r2 = rand();
@@ -73,14 +60,11 @@ function [F_comm, F_sensing, feasible, SSNR_opt] = opt_jsc_GWO_variants(H_comm, 
                 D_delta = abs(C3*Delta_pos(j) - Positions(i,j));
                 X3 = Delta_pos(j) - A3*D_delta;
                 
-                % WGWO
-                if algo_type == 4
-                    w1 = 0.5; w2 = 0.3; w3 = 0.2; 
-                    Positions(i,j) = w1*X1 + w2*X2 + w3*X3;
+                if strcmp(variant_name, 'WGWO')
+                    Positions(i,j) = 0.5*X1 + 0.3*X2 + 0.2*X3;
                 else
                     Positions(i,j) = (X1 + X2 + X3) / 3;
                 end
-                % ----------------------------------------
             end
         end
     end
